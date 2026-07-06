@@ -46,23 +46,23 @@ type ListEventsResponse struct {
 
 // ComplianceEvent is a single compliance event.
 type ComplianceEvent struct {
-	EventID         string              `json:"event_id"`
-	TenantID        string              `json:"tenant_id"`
-	EventType       string              `json:"event_type"`
-	Payload         map[string]any      `json:"payload"`
-	EventTime       *string             `json:"event_time,omitempty"`
-	RetentionPolicy string              `json:"retention_policy"`
+	EventID         string         `json:"event_id"`
+	TenantID        string         `json:"tenant_id"`
+	EventType       string         `json:"event_type"`
+	Payload         map[string]any `json:"payload"`
+	EventTime       *string        `json:"event_time,omitempty"`
+	RetentionPolicy string         `json:"retention_policy"`
 	// AccessTier is not returned by every endpoint (e.g. the single-event GET omits it).
-	AccessTier      *string             `json:"access_tier,omitempty"`
-	ExpiresAt       *string             `json:"expires_at,omitempty"`
-	APIKeyID        *string             `json:"api_key_id,omitempty"`
-	UserID          *string             `json:"user_id,omitempty"`
-	IngestedAt      string              `json:"ingested_at"`
-	PayloadHash     string              `json:"payload_hash"`
-	RequestHash     string              `json:"request_hash"`
-	EventHash       string              `json:"event_hash"`
-	IdempotencyKey  *string             `json:"idempotency_key,omitempty"`
-	Organization    *OrganizationPublic `json:"organization,omitempty"`
+	AccessTier     *string             `json:"access_tier,omitempty"`
+	ExpiresAt      *string             `json:"expires_at,omitempty"`
+	APIKeyID       *string             `json:"api_key_id,omitempty"`
+	UserID         *string             `json:"user_id,omitempty"`
+	IngestedAt     string              `json:"ingested_at"`
+	PayloadHash    string              `json:"payload_hash"`
+	RequestHash    string              `json:"request_hash"`
+	EventHash      string              `json:"event_hash"`
+	IdempotencyKey *string             `json:"idempotency_key,omitempty"`
+	Organization   *OrganizationPublic `json:"organization,omitempty"`
 }
 
 // VerifyEventResponse is returned by Events.Verify.
