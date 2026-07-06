@@ -1,0 +1,53 @@
+# Go has no package registry to publish to — `go get` resolves straight from
+# the tagged Git repo, and pkg.go.dev indexes it on first fetch. So a "release"
+# is just: test, tag, prime the module proxy, and cut a GitHub Release.
+#
+# To release:
+#   1. Update CHANGELOG.md, commit, push to main.
+#   2. Tag and push:
+#        git tag v0.1.0 -m "0.1.0"
+#        git push origin v0.1.0
+#   3. This workflow runs tests, warms proxy.golang.org, and creates the Release.
+#
+# No secrets, no registry account. Consumers then run:
+#   go get github.com/Invoance/invoance-go@v0.1.0
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write        # to create the GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+
+      - name: Prime the Go module proxy (best-effort)
+        run: |
+          # Uppercase letters in the module path are !-escaped: Invoance -> !invoance
+          curl -sSf "https://proxy.golang.org/github.com/!invoance/invoance-go/@v/${GITHUB_REF_NAME}.info" || true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            See [CHANGELOG](CHANGELOG.md) for details.
+
+            ```bash
+            go get github.com/Invoance/invoance-go@${{ github.ref_name }}
+            ```
