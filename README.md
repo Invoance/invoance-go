@@ -106,16 +106,28 @@ if !res.Valid {
 }
 ```
 
-`Validate` probes `GET /v1/events?limit=1`, never returns an error, and
-returns a `ValidationResult{Valid, Reason, BaseURL}` — use it in health checks,
+`Validate` probes `GET /v1/me` (which requires no scopes, so any live key
+passes), never returns an error, and returns a
+`ValidationResult{Valid, Reason, BaseURL}` — use it in health checks,
 startup scripts, or CI guards.
+
+To inspect what the key actually is (organization, tenant, scopes, limits),
+call `Me`:
+
+```go
+me, err := client.Me(context.Background())
+if err != nil {
+	log.Fatal(err)
+}
+fmt.Println(me["organization"], me["api_key"], me["limits"])
+```
 
 One-liner for a terminal sanity check, no SDK required:
 
 ```bash
 curl -sS -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $INVOANCE_API_KEY" \
-  "${INVOANCE_BASE_URL:-https://api.invoance.com}/v1/events?limit=1"
+  "${INVOANCE_BASE_URL:-https://api.invoance.com}/v1/me"
 # 200 = key valid · 401 = bad key · anything else = investigate
 ```
 
@@ -419,9 +431,26 @@ _, _ = client.Audit.Orgs.Create(ctx, invoance.CreateAuditOrgParams{
 	OrganizationID: "org_acme",
 	Name:           "Acme Inc.", // optional
 })
-orgs, _ := client.Audit.Orgs.List(ctx)                     // GET /audit/orgs
+orgs, _ := client.Audit.Orgs.List(ctx, invoance.ListAuditOrgsParams{
+	IncludeArchived: true, // archived orgs are excluded by default
+})
 rep, _ := client.Audit.Orgs.Integrity(ctx, "org_acme")     // integrity report
 _, _ = client.Audit.Orgs.SetRetention(ctx, "org_acme", 365) // retention days
+
+// Rename (PATCH /audit/orgs/{id}); a nil Name clears the stored name.
+name := "Acme Incorporated"
+_, _ = client.Audit.Orgs.Update(ctx, "org_acme", invoance.UpdateAuditOrgParams{Name: &name})
+
+// Archive/unarchive (idempotent). Archiving freezes new activity — ingest,
+// streams, portal, and exports return 409 org_archived — history stays
+// verifiable.
+_, _ = client.Audit.Orgs.Archive(ctx, "org_acme")
+_, _ = client.Audit.Orgs.Unarchive(ctx, "org_acme")
+
+// Hard delete, allowed only when nothing signed would be destroyed
+// (never-ingested, or archived + retention fully purged); otherwise 409
+// org_not_deletable.
+_, _ = client.Audit.Orgs.Delete(ctx, "org_acme")
 _ = orgs
 _ = rep
 ```

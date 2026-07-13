@@ -188,10 +188,65 @@ func (r *AuditOrgsResource) Create(ctx context.Context, params CreateAuditOrgPar
 	return out, err
 }
 
-// List lists orgs (GET /audit/orgs).
-func (r *AuditOrgsResource) List(ctx context.Context) (map[string]any, error) {
+// UpdateAuditOrgParams are the parameters for Audit.Orgs.Update.
+type UpdateAuditOrgParams struct {
+	// Name is the new display name. A nil Name sends JSON null, which clears
+	// the stored name.
+	Name *string
+}
+
+// Update renames an org (PATCH /audit/orgs/{orgID}). organizationID accepts
+// the aorg_ id or your external organization_id. A nil params.Name clears the
+// stored name.
+func (r *AuditOrgsResource) Update(ctx context.Context, organizationID string, params UpdateAuditOrgParams) (map[string]any, error) {
 	var out map[string]any
-	err := r.t.get(ctx, "/audit/orgs", nil, &out)
+	err := r.t.patch(ctx, "/audit/orgs/"+organizationID, map[string]any{"name": params.Name}, &out)
+	return out, err
+}
+
+// ListAuditOrgsParams are the query parameters for Audit.Orgs.List.
+type ListAuditOrgsParams struct {
+	// IncludeArchived includes archived orgs in the listing; archived orgs
+	// are excluded by default.
+	IncludeArchived bool
+}
+
+// List lists orgs (GET /audit/orgs). Archived orgs are excluded unless
+// params.IncludeArchived is set.
+func (r *AuditOrgsResource) List(ctx context.Context, params ListAuditOrgsParams) (map[string]any, error) {
+	query := map[string]any{}
+	if params.IncludeArchived {
+		query["include_archived"] = true
+	}
+	var out map[string]any
+	err := r.t.get(ctx, "/audit/orgs", query, &out)
+	return out, err
+}
+
+// Archive freezes an org (POST /audit/orgs/{orgID}/archive). Idempotent.
+// While archived, ingest, streams, portal, and exports return 409
+// org_archived; history stays verifiable. The response carries archived_at.
+func (r *AuditOrgsResource) Archive(ctx context.Context, organizationID string) (map[string]any, error) {
+	var out map[string]any
+	err := r.t.post(ctx, "/audit/orgs/"+organizationID+"/archive", nil, "", &out)
+	return out, err
+}
+
+// Unarchive reactivates an archived org (POST /audit/orgs/{orgID}/unarchive).
+// Idempotent. The response carries archived_at set to null.
+func (r *AuditOrgsResource) Unarchive(ctx context.Context, organizationID string) (map[string]any, error) {
+	var out map[string]any
+	err := r.t.post(ctx, "/audit/orgs/"+organizationID+"/unarchive", nil, "", &out)
+	return out, err
+}
+
+// Delete hard-deletes an org (DELETE /audit/orgs/{orgID}). Allowed only when
+// nothing signed would be destroyed (a never-ingested org, or an archived org
+// whose retention has fully purged); otherwise the server returns 409
+// org_not_deletable.
+func (r *AuditOrgsResource) Delete(ctx context.Context, organizationID string) (map[string]any, error) {
+	var out map[string]any
+	err := r.t.delete(ctx, "/audit/orgs/"+organizationID, &out)
 	return out, err
 }
 

@@ -71,13 +71,13 @@ type ValidationResult struct {
 	BaseURL string
 }
 
-// Validate probes GET /v1/events?limit=1 to confirm the API key works. It
-// never returns an error for expected outcomes — every failure mode is folded
-// into the ValidationResult.
+// Validate probes GET /v1/me to confirm the API key works. The endpoint
+// requires no scopes, so keys restricted to e.g. audit:* validate correctly.
+// Validate never returns an error for expected outcomes — every failure mode
+// is folded into the ValidationResult.
 func (c *Client) Validate(ctx context.Context) ValidationResult {
 	baseURL := c.cfg.baseURL
-	limit := 1
-	_, err := c.Events.List(ctx, ListEventsParams{Limit: &limit})
+	_, err := c.Me(ctx)
 	if err == nil {
 		return ValidationResult{Valid: true, Reason: "", BaseURL: baseURL}
 	}
@@ -85,7 +85,7 @@ func (c *Client) Validate(ctx context.Context) ValidationResult {
 	case IsAuthentication(err):
 		return ValidationResult{Valid: false, Reason: "Authentication failed — check INVOANCE_API_KEY", BaseURL: baseURL}
 	case IsForbidden(err):
-		return ValidationResult{Valid: true, Reason: "API key authenticated but lacks permission to list events", BaseURL: baseURL}
+		return ValidationResult{Valid: true, Reason: "API key authenticated but the request was blocked (IP access rules)", BaseURL: baseURL}
 	case IsQuotaExceeded(err):
 		return ValidationResult{Valid: true, Reason: "API key authenticated but currently rate limited", BaseURL: baseURL}
 	case IsNetwork(err) || IsTimeout(err):
@@ -93,4 +93,14 @@ func (c *Client) Validate(ctx context.Context) ValidationResult {
 	default:
 		return ValidationResult{Valid: false, Reason: err.Error(), BaseURL: baseURL}
 	}
+}
+
+// Me retrieves the authenticated caller's introspection document as an
+// untyped map (GET /me). The response describes the organization, tenant,
+// API key (id, prefix, scopes, ...), and effective limits. The endpoint
+// requires API-key authentication but no scopes.
+func (c *Client) Me(ctx context.Context) (map[string]any, error) {
+	var out map[string]any
+	err := c.transport.getRaw(ctx, "/me", &out)
+	return out, err
 }

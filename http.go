@@ -107,6 +107,10 @@ func (t *transport) put(ctx context.Context, path string, body map[string]any, o
 	return t.do(ctx, http.MethodPut, path, nil, body, "", out, false)
 }
 
+func (t *transport) patch(ctx context.Context, path string, body map[string]any, out any) error {
+	return t.do(ctx, http.MethodPatch, path, nil, body, "", out, false)
+}
+
 func (t *transport) delete(ctx context.Context, path string, out any) error {
 	return t.do(ctx, http.MethodDelete, path, nil, nil, "", out, false)
 }
@@ -168,7 +172,7 @@ func (t *transport) do(ctx context.Context, method, path string, params map[stri
 	if idempotencyKey == "" {
 		idempotencyKey = t.cfg.idempotencyKey
 	}
-	if idempotencyKey != "" && (method == http.MethodPost || method == http.MethodPut) {
+	if idempotencyKey != "" && (method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch) {
 		req.Header.Set("Idempotency-Key", idempotencyKey)
 	}
 

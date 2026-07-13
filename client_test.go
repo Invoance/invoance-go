@@ -156,11 +156,67 @@ func TestErrorPath401(t *testing.T) {
 	}
 }
 
-func TestValidateForbiddenStillValid(t *testing.T) {
+const meBody = `{"valid":true,` +
+	`"organization":{"id":"org_1","name":"Acme","issuer_name":"Acme Corp","primary_domain":"acme.com","domain_verified":true,"plan_tier":"growth"},` +
+	`"tenant":{"id":"ten_1","name":"Acme"},` +
+	`"api_key":{"id":"key_1","name":"ci","key_prefix":"inv_live_","key_last4":"ab12","scopes":["audit:read","audit:write"],"created_at":"2026-07-01T00:00:00Z","last_used_at":null},` +
+	`"limits":{"rate_limit_per_sec":50}}`
+
+func TestValidateHitsMeAndScopeFreeKeyIsValid(t *testing.T) {
+	var gotPath, gotMethod string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotMethod = r.Method
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(meBody))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	// The key in this scenario carries only audit:* scopes; /v1/me needs no
+	// scope, so validation must succeed (the old /v1/events probe could 403).
+	res := c.Validate(context.Background())
+	if !res.Valid || res.Reason != "" {
+		t.Errorf("expected valid result, got %+v", res)
+	}
+	if gotMethod != "GET" || gotPath != "/v1/me" {
+		t.Errorf("probe = %s %s, want GET /v1/me", gotMethod, gotPath)
+	}
+	if res.BaseURL != srv.URL {
+		t.Errorf("BaseURL = %q, want %q", res.BaseURL, srv.URL)
+	}
+}
+
+func TestValidateInvalidKey401(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(401)
+		_, _ = w.Write([]byte(`{"error":"invalid_api_key"}`))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	res := c.Validate(context.Background())
+	if res.Valid {
+		t.Errorf("401 must be invalid: %+v", res)
+	}
+	if res.Reason != "Authentication failed — check INVOANCE_API_KEY" {
+		t.Errorf("reason = %q", res.Reason)
+	}
+	if gotPath != "/v1/me" {
+		t.Errorf("probe path = %q, want /v1/me", gotPath)
+	}
+}
+
+func TestValidateForbiddenStillValid(t *testing.T) {
+	var gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(403)
-		_, _ = w.Write([]byte(`{"error":"forbidden"}`))
+		_, _ = w.Write([]byte(`{"error":"ip_blocked"}`))
 	}))
 	defer srv.Close()
 
@@ -168,6 +224,42 @@ func TestValidateForbiddenStillValid(t *testing.T) {
 	res := c.Validate(context.Background())
 	if !res.Valid {
 		t.Errorf("403 should be treated as valid key: %+v", res)
+	}
+	if gotPath != "/v1/me" {
+		t.Errorf("probe path = %q, want /v1/me", gotPath)
+	}
+}
+
+func TestMeReturnsDecodedBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/me" || r.Method != "GET" {
+			t.Errorf("request = %s %s, want GET /v1/me", r.Method, r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(meBody))
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	me, err := c.Me(context.Background())
+	if err != nil {
+		t.Fatalf("Me: %v", err)
+	}
+	if me["valid"] != true {
+		t.Errorf("me.valid = %v", me["valid"])
+	}
+	org, _ := me["organization"].(map[string]any)
+	if org["id"] != "org_1" || org["plan_tier"] != "growth" {
+		t.Errorf("me.organization = %v", org)
+	}
+	key, _ := me["api_key"].(map[string]any)
+	scopes, _ := key["scopes"].([]any)
+	if len(scopes) != 2 || scopes[0] != "audit:read" {
+		t.Errorf("me.api_key.scopes = %v", scopes)
+	}
+	limits, _ := me["limits"].(map[string]any)
+	if limits["rate_limit_per_sec"] != float64(50) {
+		t.Errorf("me.limits = %v", limits)
 	}
 }
 
